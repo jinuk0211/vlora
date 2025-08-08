@@ -38,42 +38,53 @@ class SingularLoRALinearLayer(nn.Module):
         self.pattern = pattern
 
     def get_weights(self, timestep, threshold =0.7):
-        content = self.weight_1_a @ self.weight_1_b
-        style = self.weight_2_a @ self.weight_2_b 
+        content_matrix = self.weight_1_a @ self.weight_1_b
+        style_matrix = self.weight_2_a @ self.weight_2_b 
+        # style_norm = torch.norm(style_lora)
+        # content_norm = torch.norm(content_lora)
 
-        # U_s, S_s, V_s = torch.svd(style_matrix)   # style
-        # U_c, S_c, V_c = torch.svd(content_matrix) # content
-        # k = 4  # 원하는 rank
-        # style_score = S_s[:k].sum()
-        # content_score = S_c[:k].sum()
-        # style_ratio = S_s[:k].sum() / S_s.sum()
-        # content_ratio = S_c[:k].sum() / S_c.sum()
+        # alpha = (style_norm + content_norm) / 2
 
-        #frobenius norm 근사        #frobenius norm 근사
-        # style_frob = torch.norm(S_s, p='fro')  # == torch.sqrt((S_s**2).sum())
-        # content_frob = torch.norm(S_c, p='fro')
+        # style_lora_normed = (alpha / style_norm) * style_lora
+        # content_lora_normed = (alpha / content_norm) * content_lora
+        # U_s, S_s, V_s = torch.svd(style_lora_normed)
+        # U_c, S_c, V_c = torch.svd(content_lora_normed)
+        # style_score = S_s.sum()
+        # content_score = S_c.sum()
+        # v = torch.abs(content_score - style_score)
 
-        style_norm = torch.norm(style_lora)
-        content_norm = torch.norm(content_lora)
+        style_norm = torch.norm(style_matrix, p='fro')
+        content_norm = torch.norm(content_matrix, p='fro')
 
-        # Step 2: Compute α (average norm)
-        alpha = (style_norm + content_norm) / 2
+        # print("Style norm:", style_norm.item())
+        # print("Content norm:", content_norm.item())
 
-        # Step 3: Normalize each LoRA
-        style_lora_normed = (alpha / style_norm) * style_lora
-        content_lora_normed = (alpha / content_norm) * content_lora
+        # 2단계: 평균 노름 계산 (스칼라값 α)
+        alpha = (style_norm.item() + content_norm.item()) / 2
+        # print("Alpha:", alpha)
+
+        # 3단계: 노름 정규화 수행
+        style_lora_normed = (alpha / style_norm.item()) * style_matrix
+        content_lora_normed = (alpha / content_norm.item()) * content_matrix
+
         U_s, S_s, V_s = torch.svd(style_lora_normed)
         U_c, S_c, V_c = torch.svd(content_lora_normed)
         style_score = S_s.sum()
         content_score = S_c.sum()
-
+        # print(f'style_score:{style_score}')
+        # print(f'content_score:{content_score}')
+        # if content_score - style_score > 0:
+        #     print('content matrix win')
+        # else:
+        #     print('style matrix win')
         v = torch.abs(content_score - style_score)
+        # print(f'v:{v}')        
         if v > threshold:
             if content_score > style_score:
-            print(f'content matrix win: {v}')
+            # print(f'content matrix win: {v}')
             return content_matrix
             else:
-            print(f'style matrix win: {v}')
+            # print(f'style matrix win: {v}')
             return style_matrix
         else:
             content_matrix + style_matrix
