@@ -37,21 +37,9 @@ class KLoRALinearLayer(nn.Module):
         self.forward_type = "merge"
         self.pattern = pattern
 
-    def get_weights(self, timestep, threshold =0.4):
+    def get_weights(self, timestep, threshold =0.09):
         content_matrix = self.weight_1_a @ self.weight_1_b
         style_matrix = self.weight_2_a @ self.weight_2_b 
-        # style_norm = torch.norm(style_lora)
-        # content_norm = torch.norm(content_lora)
-
-        # alpha = (style_norm + content_norm) / 2
-
-        # style_lora_normed = (alpha / style_norm) * style_lora
-        # content_lora_normed = (alpha / content_norm) * content_lora
-        # U_s, S_s, V_s = torch.svd(style_lora_normed)
-        # U_c, S_c, V_c = torch.svd(content_lora_normed)
-        # style_score = S_s.sum()
-        # content_score = S_c.sum()
-        # v = torch.abs(content_score - style_score)
 
         style_norm = torch.norm(style_matrix, p='fro')
         content_norm = torch.norm(content_matrix, p='fro')
@@ -59,18 +47,17 @@ class KLoRALinearLayer(nn.Module):
         # print("Style norm:", style_norm.item())
         # print("Content norm:", content_norm.item())
 
-        # 2단계: 평균 노름 계산 (스칼라값 α)
         alpha = (style_norm.item() + content_norm.item()) / 2
         # print("Alpha:", alpha)
 
-        # 3단계: 노름 정규화 수행
         style_lora_normed = (alpha / style_norm.item()) * style_matrix
         content_lora_normed = (alpha / content_norm.item()) * content_matrix
         style_lora_normed = style_lora_normed.to(torch.float32)
         content_lora_normed = content_lora_normed.to(torch.float32)
-
-        U_s, S_s, V_s = torch.svd(style_lora_normed)
-        U_c, S_c, V_c = torch.svd(content_lora_normed)
+        # S_s= torch.linalg.svdvals(style_lora_normed)
+        # S_c= torch.linalg.svdvals(content_lora_normed)
+        U_s, S_s, V_s = torch.svd_lowrank(style_lora_normed,q =10)
+        U_c, S_c, V_c = torch.svd_lowrank(content_lora_normed,q=10)        
         style_score = S_s.sum()
         content_score = S_c.sum()
         # print(f'style_score:{style_score}')
@@ -80,16 +67,17 @@ class KLoRALinearLayer(nn.Module):
         # else:
         #     print('style matrix win')
         v = torch.abs(content_score - style_score)
-        # print(f'v:{v}')        
+        print(f'v:{v}')        
         if v > threshold:
             if content_score > style_score:
-            # print(f'content matrix win: {v}')
+                print(f'content matrix win: {v}')
                 return content_matrix
             else:
-            # print(f'style matrix win: {v}')
+                print(f'style matrix win: {v}')
                 return style_matrix
         else:
-            content_matrix + style_matrix
+            print(f'no matrix win:{v}')
+            return content_matrix + style_matrix
         # alpha = style_score / (style_score + content_score + 1e-8)
         # combined_matrix = alpha * style_matrix + (1 - alpha) * content_matrix
 
@@ -105,6 +93,10 @@ class KLoRALinearLayer(nn.Module):
             weight = self.get_weights(glo_count)
             glo_count += 1
             # weight = self.weight_1_a @ self.weight_1_b + self.lambda * self.weight_2_a @ self.weight_2_b #content, style lora 그냥 합치기
+        elif self.forward_type == 'style':
+            weight = self.weight_2_a @ self.weight_2_b 
+        elif self.forward_type == 'content':
+            weight = self.weight_1_a @ self.weight_1_b
         else:
             raise ValueError(self.forward_type)
         hidden_states = nn.functional.linear(hidden_states.to(dtype), weight=weight)
@@ -135,3 +127,16 @@ class KLoRALinearLayerInference(nn.Module):
             hidden_states.to(dtype), weight=self.weight
         )
         return hidden_states.to(orig_dtype)
+
+        # style_norm = torch.norm(style_lora)
+        # content_norm = torch.norm(content_lora)
+
+        # alpha = (style_norm + content_norm) / 2
+
+        # style_lora_normed = (alpha / style_norm) * style_lora
+        # content_lora_normed = (alpha / content_norm) * content_lora
+        # U_s, S_s, V_s = torch.svd(style_lora_normed)
+        # U_c, S_c, V_c = torch.svd(content_lora_normed)
+        # style_score = S_s.sum()
+        # content_score = S_c.sum()
+        # v = torch.abs(content_score - style_score)
