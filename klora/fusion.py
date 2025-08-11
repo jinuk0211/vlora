@@ -37,7 +37,7 @@ class KLoRALinearLayer(nn.Module):
         self.forward_type = "merge"
         self.pattern = pattern
         
-    def get_weights(self, timestep, threshold =0):
+    def get_weights(self, timestep, threshold =1):
         content_matrix = self.weight_1_a @ self.weight_1_b
         style_matrix = self.weight_2_a @ self.weight_2_b 
 
@@ -79,12 +79,20 @@ class KLoRALinearLayer(nn.Module):
                 print(f'style matrix win: {v}')
                 return style_matrix
         else:
-            if timestep / self.sum_timesteps > 0.9
-                print(f'no matrix win t > 0.9 :{v}')
+            # if timestep / self.sum_timesteps > 0.9:
+            #     print(f'no matrix win t > 0.9 :{v}')
+            #     a = 0.001
+            #     x = timestep - 0.9 * self.sum_timesteps
+            #     lamb = 1 + (1 - np.exp(-a * x))
+            #     return content_matrix + lamb * style_matrix
+            if timestep / self.sum_timesteps > 0.8:
                 a = 0.001
-                x = timestep - 0.9 * self.sum_timesteps
-                lamb = 1 + 0.5 * (1 - np.exp(-a * x))
-                return content_matrix + lamb * style_matrix
+                x = timestep - 0.8 * self.sum_timesteps
+                lamb = 1 + (1 - np.exp(-a * x))
+                style_score = style_score * lamb
+            if style_score > content_score and timestep / self.sum_timesteps > 0.8:
+                print(f'no matrix win t = {timestep/self.sum_timesteps} - high score style matrix return :{v}')
+                return style_matrix
             print(f'no matrix win:{v}')
             return content_matrix + style_matrix
         # alpha = style_score / (style_score + content_score + 1e-8)
@@ -99,9 +107,9 @@ class KLoRALinearLayer(nn.Module):
         dtype = self.weight_1_a.dtype
 
         if self.forward_type == "merge":
-            weight = self.get_weights(glo_count)
+            # weight = self.get_weights(glo_count)
             glo_count += 1
-            # weight = self.weight_1_a @ self.weight_1_b + self.lambda * self.weight_2_a @ self.weight_2_b #content, style lora 그냥 합치기
+            weight = self.weight_1_a @ self.weight_1_b + self.weight_2_a @ self.weight_2_b #content, style lora 그냥 합치기
         elif self.forward_type == 'style':
             weight = self.weight_2_a @ self.weight_2_b 
         elif self.forward_type == 'content':
